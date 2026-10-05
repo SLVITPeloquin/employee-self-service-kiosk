@@ -556,7 +556,10 @@ function Invoke-Install {
     }
     Write-Host "Kiosk user account is valid standard local account." -ForegroundColor Green
     if (-not $uac -or $uac.EnableLUA -ne 1) {
-        throw "User Account Control (UAC) must be enabled (EnableLUA = 1) for Assigned Access."
+        Write-Host "UAC is currently disabled (EnableLUA = 0). Windows Assigned Access strictly requires UAC." -ForegroundColor Yellow
+        Write-Host "Enabling UAC (EnableLUA = 1) in registry..." -ForegroundColor Cyan
+        Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System" -Name "EnableLUA" -Value 1 -Type DWord -Force
+        throw "UAC has been enabled in the registry, but Windows requires a computer restart before Assigned Access can be activated. Please restart this PC and re-run the installer command."
     }
 
     # Validate Microsoft Edge
