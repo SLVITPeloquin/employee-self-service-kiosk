@@ -139,14 +139,14 @@ function Get-EdgeVersion {
 
 function Test-IsLocalUserStandard {
     param([string]$Username)
+    $bareUsername = $Username.Split('\')[-1]
     # Check if local user exists
-    $userFound = $false
     try {
-        $localUser = Get-LocalUser -Name $Username -ErrorAction Stop
+        $localUser = Get-LocalUser -Name $bareUsername -ErrorAction Stop
         $userFound = ($null -ne $localUser)
     } catch {
         try {
-            $adsiUser = [ADSI]"WinNT://$env:COMPUTERNAME/$Username,user"
+            $adsiUser = [ADSI]"WinNT://$env:COMPUTERNAME/$bareUsername,user"
             if ($adsiUser -and $adsiUser.Name) { $userFound = $true }
         } catch {
             $userFound = $false
@@ -164,14 +164,14 @@ function Test-IsLocalUserStandard {
         $members = @($adminGroup.psbase.Invoke("Members"))
         foreach ($member in $members) {
             $mName = $member.GetType().InvokeMember("Name", 'GetProperty', $null, $member, $null)
-            if ($mName -ieq $Username) {
+            if ($mName -ieq $bareUsername) {
                 $isAdmin = $true
                 break
             }
         }
     } catch {
         $netAdmins = net localgroup administrators 2>$null
-        if ($netAdmins -match "(?m)^\s*$([regex]::Escape($Username))\s*$") {
+        if ($netAdmins -match "(?m)^\s*$([regex]::Escape($bareUsername))\s*$") {
             $isAdmin = $true
         }
     }
@@ -609,6 +609,7 @@ function Invoke-Install {
             }
         }
 
+        $formattedAccount = if ($KioskUser.Contains('\')) { $KioskUser } else { ".\$KioskUser" }
         $guid = "{" + [guid]::NewGuid().ToString().ToUpper() + "}"
         $arguments = "--kiosk `"$SelectorUrl`" --edge-kiosk-type=public-browsing --kiosk-idle-timeout-minutes=2 --no-first-run"
         $newXmlDoc = [xml]@"
@@ -621,7 +622,7 @@ function Invoke-Install {
   </Profiles>
   <Configs>
     <Config>
-      <Account>$KioskUser</Account>
+      <Account>$formattedAccount</Account>
       <DefaultProfile Id="$guid" />
     </Config>
   </Configs>
@@ -629,6 +630,7 @@ function Invoke-Install {
 "@
     } else {
         Write-Host "No existing Assigned Access configuration found; creating fresh single-app kiosk configuration for '$KioskUser'..." -ForegroundColor Cyan
+        $formattedAccount = if ($KioskUser.Contains('\')) { $KioskUser } else { ".\$KioskUser" }
         $guid = "{" + [guid]::NewGuid().ToString().ToUpper() + "}"
         $arguments = "--kiosk `"$SelectorUrl`" --edge-kiosk-type=public-browsing --kiosk-idle-timeout-minutes=2 --no-first-run"
         $newXmlDoc = [xml]@"
@@ -641,7 +643,7 @@ function Invoke-Install {
   </Profiles>
   <Configs>
     <Config>
-      <Account>$KioskUser</Account>
+      <Account>$formattedAccount</Account>
       <DefaultProfile Id="$guid" />
     </Config>
   </Configs>
