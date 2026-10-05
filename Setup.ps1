@@ -109,6 +109,18 @@ function Test-IsAdministrator {
         return $false
     }
 }
+function Test-IsUacDisabled {
+    try {
+        $regKey = [Microsoft.Win32.Registry]::LocalMachine.OpenSubKey("SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System", $false)
+        if ($null -ne $regKey) {
+            $val = $regKey.GetValue("EnableLUA", 1) # Default in Windows is 1 (Enabled)
+            $regKey.Close()
+            return ($val -eq 0)
+        }
+    } catch {}
+    return $false
+}
+
 
 function Get-EdgeExecutablePath {
     $candidates = @(
@@ -408,10 +420,9 @@ function Invoke-Inspect {
     Write-Host "Operating System:   $productName ($displayVer, Build $buildNumber)"
 
     # UAC Check
-    $uac = Get-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System" -Name "EnableLUA" -ErrorAction SilentlyContinue
-    $uacEnabled = if ($uac) { [bool]$uac.EnableLUA } else { $false }
+    $uacDisabled = Test-IsUacDisabled
     Write-Host "UAC (EnableLUA):    " -NoNewline
-    if ($uacEnabled) {
+    if (-not $uacDisabled) {
         Write-Host "Enabled" -ForegroundColor Green
     } else {
         Write-Host "Disabled (Assigned Access requires UAC)" -ForegroundColor Red
@@ -555,8 +566,8 @@ function Invoke-Install {
         throw "Kiosk user account '$bareUsername' is an administrator. Assigned Access requires a standard user account."
     }
     Write-Host "Kiosk user account is valid standard local account." -ForegroundColor Green
-    if (-not $uac -or $uac.EnableLUA -ne 1) {
-        Write-Host "UAC is currently disabled (EnableLUA = 0). Windows Assigned Access strictly requires UAC." -ForegroundColor Yellow
+    if (Test-IsUacDisabled) {
+        Write-Host "UAC is explicitly disabled (EnableLUA = 0). Windows Assigned Access strictly requires UAC." -ForegroundColor Yellow
         Write-Host "Enabling UAC (EnableLUA = 1) in registry..." -ForegroundColor Cyan
         Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System" -Name "EnableLUA" -Value 1 -Type DWord -Force
         throw "UAC has been enabled in the registry, but Windows requires a computer restart before Assigned Access can be activated. Please restart this PC and re-run the installer command."

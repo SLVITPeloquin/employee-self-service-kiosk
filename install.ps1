@@ -42,29 +42,38 @@ if ($Mode -in @('Install', 'Restore') -and -not (Test-IsAdminElevated)) {
     Write-Error "This installer requires an elevated administrator PowerShell session. Please re-run PowerShell as Administrator."
     return
 }
+function Test-IsUacDisabled {
+    try {
+        $regKey = [Microsoft.Win32.Registry]::LocalMachine.OpenSubKey("SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System", $false)
+        if ($null -ne $regKey) {
+            $val = $regKey.GetValue("EnableLUA", 1) # Default in Windows is 1 (Enabled)
+            $regKey.Close()
+            return ($val -eq 0)
+        }
+    } catch {}
+    return $false
+}
+
 # Check UAC for Install mode
-if ($Mode -eq 'Install') {
-    $uac = Get-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System" -Name "EnableLUA" -ErrorAction SilentlyContinue
-    if (-not $uac -or $uac.EnableLUA -ne 1) {
-        Write-Host "`n[Notice] User Account Control (UAC) is currently disabled on this machine." -ForegroundColor Yellow
-        Write-Host "Windows Assigned Access requires UAC to be enabled to isolate the kiosk session.`n" -ForegroundColor Yellow
-        $enablePrompt = Read-Host "Would you like to enable UAC now? [Default: Y] (Y/n)"
-        if ([string]::IsNullOrWhiteSpace($enablePrompt) -or $enablePrompt -ieq 'y' -or $enablePrompt -ieq 'yes') {
-            Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System" -Name "EnableLUA" -Value 1 -Type DWord -Force
-            Write-Host "UAC (EnableLUA) enabled in registry." -ForegroundColor Green
-            $rebootPrompt = Read-Host "Windows requires a computer restart for UAC to take effect. Restart now? (Y/n)"
-            if ([string]::IsNullOrWhiteSpace($rebootPrompt) -or $rebootPrompt -ieq 'y' -or $rebootPrompt -ieq 'yes') {
-                Write-Host "Restarting computer..." -ForegroundColor Cyan
-                Restart-Computer -Force
-                return
-            } else {
-                Write-Host "Please restart your computer, then re-run this command to complete installation." -ForegroundColor Yellow
-                return
-            }
+if ($Mode -eq 'Install' -and (Test-IsUacDisabled)) {
+    Write-Host "`n[Notice] User Account Control (UAC) is explicitly disabled on this machine (EnableLUA = 0)." -ForegroundColor Yellow
+    Write-Host "Windows Assigned Access requires UAC to be enabled to isolate the kiosk session.`n" -ForegroundColor Yellow
+    $enablePrompt = Read-Host "Would you like to enable UAC now? [Default: Y] (Y/n)"
+    if ([string]::IsNullOrWhiteSpace($enablePrompt) -or $enablePrompt -ieq 'y' -or $enablePrompt -ieq 'yes') {
+        Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System" -Name "EnableLUA" -Value 1 -Type DWord -Force
+        Write-Host "UAC (EnableLUA) enabled in registry." -ForegroundColor Green
+        $rebootPrompt = Read-Host "Windows requires a computer restart for UAC to take effect. Restart now? (Y/n)"
+        if ([string]::IsNullOrWhiteSpace($rebootPrompt) -or $rebootPrompt -ieq 'y' -or $rebootPrompt -ieq 'yes') {
+            Write-Host "Restarting computer..." -ForegroundColor Cyan
+            Restart-Computer -Force
+            return
         } else {
-            Write-Error "Cannot continue installation without UAC enabled."
+            Write-Host "Please restart your computer, then re-run this command to complete installation." -ForegroundColor Yellow
             return
         }
+    } else {
+        Write-Error "Cannot continue installation without UAC enabled."
+        return
     }
 }
 
