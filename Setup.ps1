@@ -198,7 +198,7 @@ function Invoke-SystemWmiTask {
     param(
         [Parameter(Mandatory = $true)]
         [string]$ScriptContent,
-        [int]$TimeoutSeconds = 60
+        [int]$TimeoutSeconds = 30
     )
 
     $taskDir = "C:\ProgramData\EmployeeKiosk\SystemTasks"
@@ -210,6 +210,7 @@ function Invoke-SystemWmiTask {
     $taskName = "EmployeeKiosk_WMI_$taskId"
     $scriptFile = Join-Path -Path $taskDir -ChildPath "task_$taskId.ps1"
     $resultFile = Join-Path -Path $taskDir -ChildPath "result_$taskId.json"
+    $logFile = Join-Path -Path $taskDir -ChildPath "log_$taskId.txt"
 
     # Wrap script to write output to result file
     $wrappedScript = @"
@@ -234,35 +235,59 @@ $ScriptContent
 
     Set-Content -Path $scriptFile -Value $wrappedScript -Encoding UTF8 -Force
 
+    $psExe = "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe"
+    if (-not (Test-Path $psExe)) { $psExe = "powershell.exe" }
+
     $taskRegistered = $false
     try {
-        # Try native PowerShell ScheduledTasks cmdlets first
+        $started = $false
+
+        # Method 1: PowerShell ScheduledTasks module with battery support & error checking
         if (Get-Command -Name Register-ScheduledTask -ErrorAction SilentlyContinue) {
-            $action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$scriptFile`""
-            $principal = New-ScheduledTaskPrincipal -UserId "SYSTEM" -LogonType ServiceAccount -RunLevel Highest
-            $null = Register-ScheduledTask -TaskName $taskName -Action $action -Principal $principal -Force
-            $taskRegistered = $true
-            Start-ScheduledTask -TaskName $taskName
-        } else {
-            # Fallback to schtasks.exe
-            $schCmd = "schtasks.exe /Create /TN `"$taskName`" /TR `"powershell.exe -NoProfile -ExecutionPolicy Bypass -File \`"$scriptFile\`"`" /SC ONCE /ST 00:00 /RU SYSTEM /RL HIGHEST /F"
-            $null = cmd.exe /c $schCmd
-            $taskRegistered = $true
-            $null = cmd.exe /c "schtasks.exe /Run /TN `"$taskName`""
+            try {
+                $action = New-ScheduledTaskAction -Execute $psExe -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$scriptFile`" *>`"$logFile`"" -WorkingDirectory $taskDir
+                $principal = New-ScheduledTaskPrincipal -UserId "NT AUTHORITY\SYSTEM" -LogonType ServiceAccount -RunLevel Highest
+                $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit (New-TimeSpan -Minutes 5)
+                $null = Register-ScheduledTask -TaskName $taskName -Action $action -Principal $principal -Settings $settings -Force -ErrorAction Stop
+                $taskRegistered = $true
+                Start-ScheduledTask -TaskName $taskName -ErrorAction Stop
+                $started = $true
+            } catch {
+                Write-Verbose "Register-ScheduledTask failed: $($_.Exception.Message). Falling back to schtasks.exe..."
+            }
         }
 
-        # Wait for result file
+        # Method 2: Fallback to schtasks.exe
+        if (-not $started) {
+            $schCmd = "schtasks.exe /Create /TN `"$taskName`" /TR `"\`"$psExe\`" -NoProfile -ExecutionPolicy Bypass -File \`"$scriptFile\`"`" /SC ONCE /ST 00:00 /RU `"NT AUTHORITY\SYSTEM`" /RL HIGHEST /F"
+            $createOut = cmd.exe /c $schCmd 2>&1
+            if ($LASTEXITCODE -ne 0) {
+                $schCmd2 = "schtasks.exe /Create /TN `"$taskName`" /TR `"\`"$psExe\`" -NoProfile -ExecutionPolicy Bypass -File \`"$scriptFile\`"`" /SC ONCE /ST 00:00 /RU SYSTEM /RL HIGHEST /F"
+                $createOut = cmd.exe /c $schCmd2 2>&1
+            }
+            if ($LASTEXITCODE -ne 0) {
+                throw "Failed to create SYSTEM scheduled task: $createOut"
+            }
+            $taskRegistered = $true
+            $runOut = cmd.exe /c "schtasks.exe /Run /TN `"$taskName`"" 2>&1
+            if ($LASTEXITCODE -ne 0) {
+                throw "Failed to run SYSTEM scheduled task: $runOut"
+            }
+        }
+
+        # Wait for result file (max 30 seconds, polling every 250ms)
         $sw = [System.Diagnostics.Stopwatch]::StartNew()
         while ($sw.Elapsed.TotalSeconds -lt $TimeoutSeconds) {
             if (Test-Path -Path $resultFile -PathType Leaf) {
-                Start-Sleep -Milliseconds 500
+                Start-Sleep -Milliseconds 250
                 break
             }
-            Start-Sleep -Milliseconds 500
+            Start-Sleep -Milliseconds 250
         }
 
         if (-not (Test-Path -Path $resultFile -PathType Leaf)) {
-            throw "System task timed out after $TimeoutSeconds seconds without producing result."
+            $logContent = if (Test-Path $logFile) { Get-Content $logFile -Raw } else { "No log file produced." }
+            throw "System task timed out after $TimeoutSeconds seconds without producing result. Task log: $logContent"
         }
 
         $rawJson = Get-Content -Path $resultFile -Raw -Encoding UTF8
@@ -279,8 +304,7 @@ $ScriptContent
                 cmd.exe /c "schtasks.exe /Delete /TN `"$taskName`" /F" 2>$null
             }
         }
-        Remove-Item -Path $scriptFile -Force -ErrorAction SilentlyContinue
-        Remove-Item -Path $resultFile -Force -ErrorAction SilentlyContinue
+        Remove-Item -Path $scriptFile, $resultFile, $logFile -Force -ErrorAction SilentlyContinue
     }
 }
 
