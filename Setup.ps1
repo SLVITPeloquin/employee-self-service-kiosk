@@ -142,19 +142,19 @@ function Test-IsLocalUserStandard {
     $bareUsername = $Username.Split('\')[-1]
     # Check if local user exists
     try {
-        $localUser = Get-LocalUser -Name $bareUsername -ErrorAction Stop
-        $userFound = ($null -ne $localUser)
+        $localUser = Get-LocalUser -Name $bareUsername -ErrorAction SilentlyContinue
+        if ($null -ne $localUser) { $userFound = $true }
     } catch {
-        try {
-            $adsiUser = [ADSI]"WinNT://$env:COMPUTERNAME/$bareUsername,user"
-            if ($adsiUser -and $adsiUser.Name) { $userFound = $true }
-        } catch {
-            $userFound = $false
-        }
+        $userFound = $false
     }
 
     if (-not $userFound) {
-        return @{ Exists = $false; IsAdmin = $false }
+        try {
+            $adsiUser = [ADSI]"WinNT://$env:COMPUTERNAME/$bareUsername,user"
+            if ($adsiUser.psbase.Name) { $userFound = $true }
+        } catch {
+            $userFound = $false
+        }
     }
 
     # Check if member of local Administrators group
@@ -526,18 +526,35 @@ function Invoke-Install {
     }
 
     # Validate target user
-    Write-Host "Validating kiosk user account '$KioskUser'..."
-    $userCheck = Test-IsLocalUserStandard -Username $KioskUser
+    $bareUsername = $KioskUser.Split('\')[-1]
+    Write-Host "Checking kiosk user account '$bareUsername'..."
+    $userCheck = Test-IsLocalUserStandard -Username $bareUsername
     if (-not $userCheck.Exists) {
-        throw "Kiosk user account '$KioskUser' was not found on this machine."
+        Write-Host "Local user account '$bareUsername' does not exist. Creating local standard kiosk user..." -ForegroundColor Cyan
+        $created = $false
+        try {
+            if (Get-Command -Name New-LocalUser -ErrorAction SilentlyContinue) {
+                $null = New-LocalUser -Name $bareUsername -NoPassword -Description "Employee Kiosk Account" -ErrorAction Stop
+                $created = $true
+            }
+        } catch {}
+
+        if (-not $created) {
+            $addResult = cmd.exe /c "net user `"$bareUsername`" /add /comment:`"Employee Kiosk Account`"" 2>&1
+            if ($LASTEXITCODE -ne 0) {
+                throw "Failed to create local user account '$bareUsername': $addResult"
+            }
+        }
+        $userCheck = Test-IsLocalUserStandard -Username $bareUsername
+        if (-not $userCheck.Exists) {
+            throw "Could not verify local user '$bareUsername' after creation."
+        }
+        Write-Host "Local standard user account '$bareUsername' created successfully." -ForegroundColor Green
     }
     if ($userCheck.IsAdmin) {
-        throw "Kiosk user account '$KioskUser' is an administrator. Assigned Access requires a standard user account."
+        throw "Kiosk user account '$bareUsername' is an administrator. Assigned Access requires a standard user account."
     }
     Write-Host "Kiosk user account is valid standard local account." -ForegroundColor Green
-
-    # Validate UAC
-    $uac = Get-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System" -Name "EnableLUA" -ErrorAction SilentlyContinue
     if (-not $uac -or $uac.EnableLUA -ne 1) {
         throw "User Account Control (UAC) must be enabled (EnableLUA = 1) for Assigned Access."
     }

@@ -45,67 +45,19 @@ if ($Mode -in @('Install', 'Restore') -and -not (Test-IsAdminElevated)) {
 
 # Determine KioskUser if installing
 if ($Mode -eq 'Install' -and [string]::IsNullOrWhiteSpace($KioskUser)) {
-    # Check environment variable
     if (-not [string]::IsNullOrWhiteSpace($env:KIOSK_USER)) {
         $KioskUser = $env:KIOSK_USER
     } else {
-        # Try auto-detecting from existing Assigned Access cmdlet if available
-        $detectedUser = $null
-        try {
-            if (Get-Command -Name Get-AssignedAccess -ErrorAction SilentlyContinue) {
-                $aa = Get-AssignedAccess -ErrorAction SilentlyContinue
-                if ($aa -and $aa.UserName) {
-                    $detectedUser = $aa.UserName.Split('\')[-1]
-                }
-            }
-        } catch {}
-
-        if (-not [string]::IsNullOrWhiteSpace($detectedUser)) {
-            $prompt = Read-Host "Detected existing kiosk account '$detectedUser'. Use this account? (Y/n or enter custom account)"
-            if ([string]::IsNullOrWhiteSpace($prompt) -or $prompt -ieq 'y' -or $prompt -ieq 'yes') {
-                $KioskUser = $detectedUser
-            } else {
-                $KioskUser = $prompt.Trim()
-            }
+        $prompt = Read-Host "Enter the local kiosk username [Press Enter for default: KioskUser]"
+        if ([string]::IsNullOrWhiteSpace($prompt)) {
+            $KioskUser = 'KioskUser'
         } else {
-            # Check for common local standard accounts or prompt
-            $KioskUser = Read-Host "Enter the local kiosk username to configure (e.g. KioskUser)"
+            $KioskUser = $prompt.Trim()
         }
     }
 }
-# Ensure KioskUser exists, or offer to create it
-if ($Mode -eq 'Install' -and -not [string]::IsNullOrWhiteSpace($KioskUser)) {
-    $userExists = $false
-    try {
-        $localU = Get-LocalUser -Name $KioskUser -ErrorAction SilentlyContinue
-        if ($null -ne $localU) { $userExists = $true }
-    } catch {}
-
-    if (-not $userExists) {
-        $netCheck = cmd.exe /c "net user `"$KioskUser`"" 2>&1
-        if ($LASTEXITCODE -eq 0) { $userExists = $true }
-    }
-
-    if (-not $userExists) {
-        $createPrompt = Read-Host "Local user account '$KioskUser' was not found. Create it now as a local standard kiosk account with no password? (Y/n)"
-        if ([string]::IsNullOrWhiteSpace($createPrompt) -or $createPrompt -ieq 'y' -or $createPrompt -ieq 'yes') {
-            Write-Host "Creating local standard user '$KioskUser'..." -ForegroundColor Cyan
-            $null = cmd.exe /c "net user `"$KioskUser`" `"`" /add /comment:`"Employee Kiosk User`""
-            if ($LASTEXITCODE -ne 0) {
-                throw "Failed to create local user account '$KioskUser'."
-            }
-            Write-Host "Local account '$KioskUser' created successfully." -ForegroundColor Green
-        } else {
-            Write-Error "Cannot proceed without a valid local standard user account."
-            return
-        }
-    }
-}
-
-
-if ($Mode -eq 'Install' -and [string]::IsNullOrWhiteSpace($KioskUser)) {
-    Write-Error "A local kiosk user account must be specified to complete installation."
-    return
+if ([string]::IsNullOrWhiteSpace($KioskUser)) {
+    $KioskUser = 'KioskUser'
 }
 
 # Staging directory
