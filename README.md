@@ -6,6 +6,25 @@ Built on native **Windows Assigned Access (Single-App Kiosk)** and **Microsoft E
 
 ---
 
+## Installation
+
+Open an elevated PowerShell prompt (**Run as Administrator**) on the kiosk PC and run:
+
+```powershell
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force; irm https://raw.githubusercontent.com/SLVITPeloquin/employee-self-service-kiosk/main/install.ps1 | iex
+```
+
+- When prompted for the local kiosk username, press **Enter** to accept the default (`KioskUser`), or enter an existing local standard account name.
+- If the account does not exist yet, the installer creates the standard local account automatically.
+
+> **Prerequisite — UAC:** Windows Assigned Access requires User Account Control (`EnableLUA = 1`). If UAC is currently disabled on the PC, run this one-liner to enable it and restart:
+> ```powershell
+> Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System" -Name "EnableLUA" -Value 1 -Type DWord -Force; Restart-Computer
+> ```
+> After the computer restarts, run the installation command above to finish setup.
+
+---
+
 ## Included Portals
 
 The selector displays the portals in the following order:
@@ -40,14 +59,7 @@ The selector displays the portals in the following order:
 
 ---
 
-## One-Line PowerShell Installation (Recommended)
-
-Open an elevated PowerShell prompt (**Run as Administrator**) on the kiosk PC and run:
-```powershell
-Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force; irm https://raw.githubusercontent.com/SLVITPeloquin/employee-self-service-kiosk/main/install.ps1 | iex
-```
-The script will automatically run pre-flight checks, download the required files to a temporary staging folder, prompt for or auto-detect your existing local kiosk account, configure Windows Assigned Access, apply Edge lockdown policies, and clean up the temporary files.
-
+## Advanced / Scripted Options
 ### Non-Interactive / Scripted Usage
 
 Pass the local kiosk username directly:
