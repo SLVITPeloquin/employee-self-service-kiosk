@@ -628,7 +628,25 @@ function Invoke-Install {
 </AssignedAccessConfiguration>
 "@
     } else {
-        throw "No existing Assigned Access configuration found. The setup bundle preserves existing kiosks and does not create new ones from scratch."
+        Write-Host "No existing Assigned Access configuration found; creating fresh single-app kiosk configuration for '$KioskUser'..." -ForegroundColor Cyan
+        $guid = "{" + [guid]::NewGuid().ToString().ToUpper() + "}"
+        $arguments = "--kiosk `"$SelectorUrl`" --edge-kiosk-type=public-browsing --kiosk-idle-timeout-minutes=2 --no-first-run"
+        $newXmlDoc = [xml]@"
+<?xml version="1.0" encoding="utf-8"?>
+<AssignedAccessConfiguration xmlns="http://schemas.microsoft.com/AssignedAccess/2017/config" xmlns:v4="http://schemas.microsoft.com/AssignedAccess/2021/config">
+  <Profiles>
+    <Profile Id="$guid">
+      <KioskModeApp v4:ClassicAppPath="$edgePath" v4:ClassicAppArguments="$arguments" />
+    </Profile>
+  </Profiles>
+  <Configs>
+    <Config>
+      <Account>$KioskUser</Account>
+      <DefaultProfile Id="$guid" />
+    </Config>
+  </Configs>
+</AssignedAccessConfiguration>
+"@
     }
 
     # Apply configuration and policies with rollback protection

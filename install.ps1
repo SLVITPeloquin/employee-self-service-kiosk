@@ -73,6 +73,35 @@ if ($Mode -eq 'Install' -and [string]::IsNullOrWhiteSpace($KioskUser)) {
         }
     }
 }
+# Ensure KioskUser exists, or offer to create it
+if ($Mode -eq 'Install' -and -not [string]::IsNullOrWhiteSpace($KioskUser)) {
+    $userExists = $false
+    try {
+        $localU = Get-LocalUser -Name $KioskUser -ErrorAction SilentlyContinue
+        if ($null -ne $localU) { $userExists = $true }
+    } catch {}
+
+    if (-not $userExists) {
+        $netCheck = cmd.exe /c "net user `"$KioskUser`"" 2>&1
+        if ($LASTEXITCODE -eq 0) { $userExists = $true }
+    }
+
+    if (-not $userExists) {
+        $createPrompt = Read-Host "Local user account '$KioskUser' was not found. Create it now as a local standard kiosk account with no password? (Y/n)"
+        if ([string]::IsNullOrWhiteSpace($createPrompt) -or $createPrompt -ieq 'y' -or $createPrompt -ieq 'yes') {
+            Write-Host "Creating local standard user '$KioskUser'..." -ForegroundColor Cyan
+            $null = cmd.exe /c "net user `"$KioskUser`" `"`" /add /comment:`"Employee Kiosk User`""
+            if ($LASTEXITCODE -ne 0) {
+                throw "Failed to create local user account '$KioskUser'."
+            }
+            Write-Host "Local account '$KioskUser' created successfully." -ForegroundColor Green
+        } else {
+            Write-Error "Cannot proceed without a valid local standard user account."
+            return
+        }
+    }
+}
+
 
 if ($Mode -eq 'Install' -and [string]::IsNullOrWhiteSpace($KioskUser)) {
     Write-Error "A local kiosk user account must be specified to complete installation."
