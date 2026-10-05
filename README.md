@@ -33,9 +33,39 @@ The selector displays the portals in the following order:
 
 | File | Description |
 |---|---|
+| `install.ps1` | One-line bootstrap script that downloads the bundle and runs pre-flight checks and installation. |
 | `index.html` | Self-contained static selector page (inline CSS, system fonts, high-contrast accessible buttons, visible session instructions). Staged to `C:\ProgramData\EmployeeKiosk\index.html`. |
 | `Setup.ps1` | PowerShell 5.1 administrator script supporting `Inspect`, `Install`, and `Restore` workflows via `MDM_AssignedAccess` WMI Bridge. |
 | `Check-Configuration.ps1` | Self-contained regression test verifying XML preservation invariants, argument injection, and error handling. |
+
+---
+
+## One-Line PowerShell Installation (Recommended)
+
+Open an elevated PowerShell prompt (**Run as Administrator**) on the kiosk PC and run:
+
+```powershell
+irm https://raw.githubusercontent.com/SLVITPeloquin/employee-self-service-kiosk/main/install.ps1 | iex
+```
+
+The script will automatically run pre-flight checks, download the required files to a temporary staging folder, prompt for or auto-detect your existing local kiosk account, configure Windows Assigned Access, apply Edge lockdown policies, and clean up the temporary files.
+
+### Non-Interactive / Scripted Usage
+
+Pass the local kiosk username directly:
+```powershell
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/SLVITPeloquin/employee-self-service-kiosk/main/install.ps1))) -KioskUser 'KioskUser'
+```
+
+Run a read-only pre-flight inspection without modifying anything:
+```powershell
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/SLVITPeloquin/employee-self-service-kiosk/main/install.ps1))) -Mode Inspect
+```
+
+Revert to the original pre-installation setup:
+```powershell
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/SLVITPeloquin/employee-self-service-kiosk/main/install.ps1))) -Mode Restore
+```
 
 ---
 
