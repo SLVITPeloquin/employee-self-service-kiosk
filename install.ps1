@@ -20,6 +20,10 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+try {
+    Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force -ErrorAction SilentlyContinue
+} catch {}
+
 
 Write-Host "`n=== Employee Self-Service Kiosk Online Installer ===" -ForegroundColor Cyan
 
@@ -96,15 +100,18 @@ try {
 
     if ($Mode -eq 'Install') {
         Write-Host "`nRunning pre-installation configuration check..." -ForegroundColor Cyan
-        & $checkScript
+        & powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$checkScript"
+        if ($LASTEXITCODE -ne 0) {
+            throw "Pre-installation configuration checks failed."
+        }
         Write-Host "Pre-installation checks passed.`n" -ForegroundColor Green
 
         Write-Host "Executing Setup.ps1 -Mode Install -KioskUser '$KioskUser'..." -ForegroundColor Cyan
-        & $setupScript -Mode Install -KioskUser $KioskUser -SelectorUrl $SelectorUrl
+        & powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$setupScript" -Mode Install -KioskUser $KioskUser -SelectorUrl $SelectorUrl
     } elseif ($Mode -eq 'Inspect') {
-        & $setupScript -Mode Inspect
+        & powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$setupScript" -Mode Inspect
     } elseif ($Mode -eq 'Restore') {
-        & $setupScript -Mode Restore
+        & powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$setupScript" -Mode Restore
     }
 } finally {
     Remove-Item -Path $tempDir -Recurse -Force -ErrorAction SilentlyContinue
