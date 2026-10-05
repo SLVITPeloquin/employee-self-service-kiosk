@@ -69,8 +69,9 @@ $files = @("index.html", "Setup.ps1", "Check-Configuration.ps1")
 
 try {
     Write-Host "Downloading latest kiosk files from GitHub..." -ForegroundColor Cyan
+    $cacheBuster = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
     foreach ($file in $files) {
-        $fileUrl = "$baseUrl/$file"
+        $fileUrl = "$baseUrl/$file`?v=$cacheBuster"
         $destPath = Join-Path -Path $tempDir -ChildPath $file
         Invoke-WebRequest -Uri $fileUrl -OutFile $destPath -UseBasicParsing
         Write-Host "  Downloaded $file" -ForegroundColor Green
